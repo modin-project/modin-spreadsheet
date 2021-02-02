@@ -1,5 +1,3 @@
-from ._version import version_info, __version__  # noqa F401
-
 from .grid import (
     enable,
     disable,
@@ -11,6 +9,7 @@ from .grid import (
     QgridWidget,
     QGridWidget,
 )
+from ._version import get_versions
 
 
 def _jupyter_nbextension_paths():
@@ -35,3 +34,6 @@ __all__ = [
     "QgridWidget",
     "QGridWidget",
 ]
+
+__version__ = get_versions()["version"]
+del get_versions

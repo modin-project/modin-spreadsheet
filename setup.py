@@ -8,6 +8,7 @@ import os
 import sys
 import platform
 from os.path import join, dirname, abspath, exists
+import versioneer
 
 here = dirname(abspath(__file__))
 node_root = join(here, "js")
@@ -26,9 +27,7 @@ log.set_verbosity(log.DEBUG)
 log.info("setup.py entered")
 log.info("$PATH=%s" % os.environ["PATH"])
 
-LONG_DESCRIPTION = (
-    "An Interactive Grid for Sorting and Filtering DataFrames in Jupyter Notebook"
-)
+LONG_DESCRIPTION = "An implementation for the Spreadsheet API of Modin"
 
 
 def js_prerelease(command, strict=False):
@@ -128,11 +127,6 @@ class NPM(Command):
         update_package_data(self.distribution)
 
 
-version_ns = {}
-with open(join(here, "qgrid", "_version.py")) as f:
-    exec(f.read(), {}, version_ns)
-
-
 def read_requirements(basename):
     reqs_file = join(dirname(abspath(__file__)), basename)
     with open(reqs_file) as f:
@@ -160,9 +154,8 @@ def extras_require():
 
 
 setup_args = {
-    "name": "qgrid",
-    "version": version_ns["__version__"],
-    "description": "An Interactive Grid for Sorting and Filtering DataFrames in Jupyter Notebook",
+    "name": "modin-spreadsheet",
+    "description": "An implementation for the Spreadsheet API of Modin",
     "long_description": LONG_DESCRIPTION,
     "include_package_data": True,
     "data_files": [
@@ -172,36 +165,15 @@ setup_args = {
     "extras_require": extras_require(),
     "packages": find_packages(),
     "zip_safe": False,
-    "cmdclass": {
-        "build_py": js_prerelease(build_py),
-        "egg_info": js_prerelease(egg_info),
-        "sdist": js_prerelease(sdist, strict=True),
-        "jsdeps": NPM,
-    },
-    "author": "Quantopian Inc.",
-    "author_email": "opensource@quantopian.com",
-    "url": "https://github.com/quantopian/qgrid",
+    "author": "Modin Maintainers",
+    "author_email": "dev@modin.org",
+    "url": "https://github.com/modin-project/qgrid",
     "license": "Apache-2.0",
     "keywords": [
         "ipython",
         "jupyter",
         "widgets",
     ],
-    "classifiers": [
-        "Development Status :: 4 - Beta",
-        "Framework :: IPython",
-        "Intended Audience :: Developers",
-        "Intended Audience :: Science/Research",
-        "Topic :: Office/Business :: Financial",
-        "Topic :: Scientific/Engineering :: Information Analysis",
-        "Topic :: Multimedia :: Graphics",
-        "Programming Language :: Python :: 2",
-        "Programming Language :: Python :: 2.7",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.3",
-        "Programming Language :: Python :: 3.4",
-        "Programming Language :: Python :: 3.5",
-    ],
 }
 
-setup(**setup_args)
+setup(version=versioneer.get_version(), cmdclass=versioneer.get_cmdclass(),**setup_args)
