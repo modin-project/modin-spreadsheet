@@ -35,7 +35,7 @@ class _DefaultSettings(object):
         self._grid_options = {
             "fullWidthRows": True,
             "syncColumnCellResize": True,
-            "forceFitColumns": True,
+            "forceFitColumns": False,
             "defaultColumnWidth": 150,
             "rowHeight": 28,
             "enableColumnReorder": False,
@@ -62,7 +62,7 @@ class _DefaultSettings(object):
             "toolTip": "",
             "width": None,
         }
-        self._show_toolbar = False
+        self._show_toolbar = True
         self._precision = None  # Defer to pandas.get_option
 
     def set_grid_option(self, optname, optvalue):
@@ -394,7 +394,7 @@ def show_grid(
             # SlickGrid options
             'fullWidthRows': True,
             'syncColumnCellResize': True,
-            'forceFitColumns': True,
+            'forceFitColumns': False,
             'defaultColumnWidth': 150,
             'rowHeight': 28,
             'enableColumnReorder': False,
@@ -613,7 +613,7 @@ class SpreadsheetWidget(widgets.DOMWidget):
     column_options = Dict({})
     column_definitions = Dict({})
     row_edit_callback = Instance(FunctionType, sync=False, allow_none=True)
-    show_toolbar = Bool(False, sync=True)
+    show_toolbar = Bool(True, sync=True)
     id = Unicode(sync=True)
 
     def __init__(self, *args, **kwargs):
