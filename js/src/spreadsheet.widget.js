@@ -576,11 +576,24 @@ class ModinSpreadsheetView extends widgets.DOMWidgetView {
     }
 
     this.slick_grid.onCellChange.subscribe((e, args) => {
-      var column = this.columns[args.cell].name;
+      var column = args.grid.getColumns()[args.cell].name;
       var data_item = this.slick_grid.getDataItem(args.row);
       var msg = {'row_index': data_item.row_index, 'column': column,
                  'unfiltered_index': data_item[this.index_col_name],
                  'value': args.item[column], 'type': 'edit_cell'};
+      this.send(msg);
+    });
+
+    this.slick_grid.onColumnsReordered.subscribe((e, args) => {
+      var column_names = [];
+      var num_columns = args.grid.getColumns().length;
+
+      for(var i = 1; i < num_columns; i+= 1) {
+        var column_name = args.grid.getColumns()[i].name;
+        column_names.push(column_name);
+      }
+
+      var msg = {'column_names': column_names, 'type': 'reorder_columns'};
       this.send(msg);
     });
 

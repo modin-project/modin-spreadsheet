@@ -1169,7 +1169,7 @@ class SpreadsheetWidget(widgets.DOMWidget):
             self._record_transformation(
                 (
                     f"{constants.SORT_MIXED_TYPE_COLUMN}\n"
-                    f"df['{helper_col}'] = df['{self._sort_field}'].map(str)\n"
+                    f"df[{repr(helper_col)}] = df[{repr(self._sort_field)}].map(str)\n"
                     f"df.sort_values('{helper_col}', ascending={self._sort_ascending}, inplace=True)\n"
                     f"df.drop(columns='{helper_col}', inplace=True)"
                 )
@@ -1419,12 +1419,12 @@ class SpreadsheetWidget(widgets.DOMWidget):
             if filter_info["min"] is not None:
                 conditions.append(col_series >= filter_info["min"])
                 self._filter_conditions.append(
-                    f"unfiltered_df['{col_name}'] >= {filter_info['min']}"
+                    f"unfiltered_df[{repr(col_name)}] >= {filter_info['min']}"
                 )
             if filter_info["max"] is not None:
                 conditions.append(col_series <= filter_info["max"])
                 self._filter_conditions.append(
-                    f"unfiltered_df['{col_name}'] <= {filter_info['max']}"
+                    f"unfiltered_df[{repr(col_name)}] <= {filter_info['max']}"
                 )
         elif filter_info["type"] == "date":
             if filter_info["min"] is not None:
@@ -1432,20 +1432,20 @@ class SpreadsheetWidget(widgets.DOMWidget):
                     col_series >= pd.to_datetime(filter_info["min"], unit="ms")
                 )
                 self._filter_conditions.append(
-                    f"unfiltered_df['{col_name}'] >= pd.to_datetime({filter_info['min']}, unit='ms')"
+                    f"unfiltered_df[{repr(col_name)}] >= pd.to_datetime({filter_info['min']}, unit='ms')"
                 )
             if filter_info["max"] is not None:
                 conditions.append(
                     col_series <= pd.to_datetime(filter_info["max"], unit="ms")
                 )
                 self._filter_conditions.append(
-                    f"unfiltered_df['{col_name}'] <= pd.to_datetime({filter_info['max']}, unit='ms')"
+                    f"unfiltered_df[{repr(col_name)}] <= pd.to_datetime({filter_info['max']}, unit='ms')"
                 )
         elif filter_info["type"] == "boolean":
             if filter_info["selected"] is not None:
                 conditions.append(col_series == filter_info["selected"])
                 self._filter_conditions.append(
-                    f"unfiltered_df['{col_name}'] == {filter_info['selected']}"
+                    f"unfiltered_df[{repr(col_name)}] == {filter_info['selected']}"
                 )
         elif filter_info["type"] == "text":
             if col_name not in self._filter_tables:
@@ -1464,7 +1464,7 @@ class SpreadsheetWidget(widgets.DOMWidget):
                     )
                     conditions.append(~col_series.isin(excluded_values))
                     self._filter_conditions.append(
-                        f"~unfiltered_df['{col_name}'].isin({excluded_values})"
+                        f"~unfiltered_df[{repr(col_name)}].isin({excluded_values})"
                     )
             elif selected_indices is not None and len(selected_indices) > 0:
                 selected_values = list(
@@ -1472,7 +1472,7 @@ class SpreadsheetWidget(widgets.DOMWidget):
                 )
                 conditions.append(col_series.isin(selected_values))
                 self._filter_conditions.append(
-                    f"unfiltered_df['{col_name}'].isin({selected_values})"
+                    f"unfiltered_df[{repr(col_name)}].isin({selected_values})"
                 )
 
     def _handle_change_filter(self, content):
@@ -1706,6 +1706,17 @@ class SpreadsheetWidget(widgets.DOMWidget):
         elif content["type"] == "filter_history":
             self._filter_relevant_history(persist=True)
             self._notify_listeners({"name": "history_filtered", "source": "gui"})
+        elif content["type"] == "reorder_columns":
+            column_names = content["column_names"]
+            self._record_transformation(
+                f"{constants.REORDER_COLUMN}\n"
+                f"df = df.reindex(columns={column_names})\n"
+                f"unfiltered_df = unfiltered_df.reindex(columns={column_names})"
+            )
+            column_names.insert(0, "modin_spreadsheet_unfiltered_index")
+            column_names.extend(list(self._sort_helper_columns.values()))
+            self._df = self._df.reindex(columns=column_names)
+            self._unfiltered_df = self._unfiltered_df.reindex(columns=column_names)
 
     def _notify_listeners(self, event):
         # notify listeners at the module level

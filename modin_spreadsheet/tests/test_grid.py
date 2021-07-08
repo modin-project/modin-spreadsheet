@@ -11,16 +11,25 @@ import numpy as np
 import modin.pandas as pd
 import json
 
+# Compares values between two modin dataframes. NaNs in the same positions
+# are considered equal, whereas in the equals function they are not.
+# pandas.testing.assert_frame_equals doesn't work with modin dataframes.
+def assert_modin_frame_equals(df, expected):
+    comparison_normal = df == expected
+    comparison_NaN = df.isna() == expected.isna()
+    assert all(comparison_normal | comparison_NaN)
 
 def create_df():
     return pd.DataFrame(
         {
-            "A": 1.0,
-            "Date": pd.Timestamp("20130102"),
-            "C": pd.Series(1, index=list(range(4)), dtype="float32"),
-            "D": np.array([3] * 4, dtype="int32"),
+            "A": [1.0, 2.0, 1.0, 3.0],
+            "Date": [pd.Timestamp("20130102"), pd.Timestamp("20140102"), pd.Timestamp("20140202"), pd.Timestamp("20130102")],
+            "C": pd.Series([1, 2, 3, 4], index=list(range(4)), dtype="float32"),
+            "D": np.array([3, 2, 1, 4], dtype="int32"),
             "E": pd.Categorical(["test", "train", "foo", "bar"]),
             "F": ["foo", "bar", "buzz", "fox"],
+            "Mixed": [pd.Timestamp("2017-02-02"), np.nan, 1e10, "hey"],
+            1: [5, 4, "hello", 1],
         }
     )
 
@@ -142,36 +151,28 @@ def check_edit_success(
 
 
 def test_edit_number():
-    old_val = 3
-    view = SpreadsheetWidget(df=create_df())
-
+    df = create_df()
+    view = SpreadsheetWidget(df=df)
+    old_val = df.loc[2, "D"]
     for idx in range(-10, 10, 1):
         check_edit_success(view, "D", 2, old_val, old_val, idx, idx)
         old_val = idx
 
 
 def test_add_row_button():
-    widget = SpreadsheetWidget(df=create_df())
+    df = create_df()
+    widget = SpreadsheetWidget(df=df)
     event_history = init_event_history("row_added", widget=widget)
 
     widget._handle_view_msg_helper({"type": "add_row"})
 
     assert event_history == [{"name": "row_added", "index": 4, "source": "gui"}]
 
-    # make sure the added row in the internal dataframe contains the
-    # expected values
+    # make sure the added row in the internal dataframe duplicates the
+    # last row and increments the index
     added_index = event_history[0]["index"]
-    expected_values = pd.Series(
-        {
-            "modin_spreadsheet_unfiltered_index": 4,
-            "A": 1,
-            "C": 1,
-            "D": 3,
-            "Date": pd.Timestamp("2013-01-02 00:00:00"),
-            "E": "bar",
-            "F": "fox",
-        }
-    )
+    expected_values = df.iloc[3,:]
+    expected_values["modin_spreadsheet_unfiltered_index"] = 4
     sort_idx = widget._df.loc[added_index].index
     assert (widget._df.loc[added_index] == expected_values[sort_idx]).all()
 
@@ -264,7 +265,7 @@ def test_get_selected_df():
     view._handle_view_msg_helper({"rows": selected_rows, "type": "change_selection"})
     selected_df = view.get_selected_df()
     assert len(selected_df) == 2
-    assert sample_df.iloc[selected_rows].equals(selected_df)
+    assert_modin_frame_equals(sample_df.iloc[selected_rows], pd.DataFrame(selected_df))
 
 
 def test_integer_index_filter():
@@ -865,6 +866,15 @@ def test_get_history():
     expected_history = "# Reset sort\ndf.sort_index(ascending=True, inplace=True)"
     assert last_history == expected_history
 
+    # Reorder columns
+    # Should also check that no helper columns are recorded
+    spreadsheet._handle_view_msg_helper(
+        {"column_names": ['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1], "type": "reorder_columns"}
+    )
+    last_history = spreadsheet.get_history()[-1]
+    expected_history = "# Reorder column\ndf = df.reindex(columns=['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1])\nunfiltered_df = unfiltered_df.reindex(columns=['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1])"
+    assert last_history == expected_history
+
     # Clear history
     spreadsheet._handle_view_msg_helper({"type": "clear_history"})
     history = spreadsheet.get_history()
@@ -910,7 +920,7 @@ def test_apply_history():
                 "field": "Date",
                 "type": "date",
                 "min": 1356998400000,
-                "max": 1357171199999,
+                "max": 1400000000000,
             },
         }
     )
@@ -927,6 +937,9 @@ def test_apply_history():
         }
     )
     spreadsheet._handle_view_msg_helper(
+        {"column_names": ['Date', 1, 'A', 'C', 'F', 'Mixed', 'E', 'D'], "type": "reorder_columns"}
+    )
+    spreadsheet._handle_view_msg_helper(
         {
             "row_index": 2,
             "column": "A",
@@ -939,15 +952,15 @@ def test_apply_history():
     changed_df = spreadsheet.get_changed_df()
 
     # Checks that spreadsheet df is not modified in place
-    assert not changed_df.equals(df)
+    assert_modin_frame_equals(changed_df, df)
 
     applied_df = spreadsheet.apply_history(df_copy)
 
     # Checks that apply_history does not modify in place
-    assert df.equals(df_copy)
+    assert_modin_frame_equals(df, df_copy)
 
     # Checks that the history is applied properly
-    assert changed_df.equals(applied_df)
+    assert_modin_frame_equals(changed_df, applied_df)
 
 
 def test_filter_relevant_history():
@@ -1034,12 +1047,16 @@ def test_filter_relevant_history():
         "# Add row\nlast = df.loc[max(df.index)].copy()\ndf.loc[last.name+1] = last.values\nunfiltered_df.loc[last.name+1] = last.values",
         "# Reset all filters\ndf = unfiltered_df.copy()",
         "# Sort index\ndf.sort_index(ascending=True, inplace=True)",
+        "# Reorder column\ndf = df.reindex(columns=['A', 'Date', 'C', 'E', 'D', 'F', 'Mixed', 1])\nunfiltered_df = unfiltered_df.reindex(columns=['A', 'Date', 'C', 'E', 'D', 'F', 'Mixed', 1])",
+        "# Reorder column\ndf = df.reindex(columns=['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1])\nunfiltered_df = unfiltered_df.reindex(columns=['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1])"
     ]
     expected_filtered_history = [
         "# Edit cell\ndf.loc[(4, 'trip_id')]=10\nunfiltered_df.loc[(4, 'trip_id')]=10",
         "# Remove rows\ndf.drop([6], inplace=True)\nunfiltered_df.drop([6], inplace=True)",
         "# Add row\nlast = df.loc[max(df.index)].copy()\ndf.loc[last.name+1] = last.values\nunfiltered_df.loc[last.name+1] = last.values",
         "# Sort index\ndf.sort_index(ascending=True, inplace=True)",
+        "# Reorder column\ndf = df.reindex(columns=['A', 'Date', 'C', 'E', 'D', 'F', 'Mixed', 1])\nunfiltered_df = unfiltered_df.reindex(columns=['A', 'Date', 'C', 'E', 'D', 'F', 'Mixed', 1])",
+        "# Reorder column\ndf = df.reindex(columns=['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1])\nunfiltered_df = unfiltered_df.reindex(columns=['A', 'Date', 'C', 'F', 'E', 'D', 'Mixed', 1])"
     ]
     spreadsheet._history = mixed_history
     filtered_history = spreadsheet.filter_relevant_history()
@@ -1084,3 +1101,58 @@ def test_mixed_type_sort():
     expected_order_1 = [1, 2, 4, 5, "hello"]
     sorted_order_1 = list(spreadsheet.get_changed_df()[1])
     assert expected_order_1 == sorted_order_1
+
+
+def test_column_reorder():
+    spreadsheet = SpreadsheetWidget(df=create_df())
+
+    # Check basic column reorder (move column A behind C)
+    spreadsheet._handle_view_msg_helper(
+        {"column_names": ['Date', 'C', 'A', 'D', 'E', 'F', 'Mixed', 1], "type": "reorder_columns"}
+    )
+
+    expected_columns = ['Date', 'C', 'A', 'D', 'E', 'F', 'Mixed', 1]
+    actual_columns = list(spreadsheet.get_changed_df().columns)
+    assert expected_columns == actual_columns
+
+    # Check non-string column name reorder (move column 1 behind F)
+    spreadsheet._handle_view_msg_helper(
+        {"column_names": ['Date', 'C', 'A', 'D', 'E', 'F', 'Mixed', 1], "type": "reorder_columns"}
+    )
+
+    expected_columns = ['Date', 'C', 'A', 'D', 'E', 'F', 'Mixed', 1]
+    actual_columns = list(spreadsheet.get_changed_df().columns)
+    assert expected_columns == actual_columns
+
+    # Check sort on column A is correct
+    spreadsheet._handle_view_msg_helper(
+        {"type": "change_sort", "sort_field": "A", "sort_ascending": False}
+    )
+
+    expected_order = [3, 2, 1, 1]
+    sorted_order = list(spreadsheet.get_changed_df()["A"])
+    assert expected_order == sorted_order
+
+    # Check editing cell in column A is correct
+    spreadsheet._handle_view_msg_helper(
+        {
+            "row_index": 0,
+            "column": "A",
+            "unfiltered_index": 3,
+            "value": 5,
+            "type": "edit_cell",
+        }
+    )
+
+    assert spreadsheet.get_changed_df().loc[3, "A"] == 5
+
+    # Reorder columns with helper column
+    spreadsheet._handle_view_msg_helper(
+        {'type': 'change_sort', 'sort_field': 1, 'sort_ascending': True}
+    )
+    spreadsheet._handle_view_msg_helper(
+        {"column_names": ['Date', 1, 'A', 'C', 'F', 'Mixed', 'E', 'D'], "type": "reorder_columns"}
+    )
+    expected_columns = ['Date', 1, 'A', 'C', 'F', 'Mixed', 'E', 'D']
+    actual_columns = list(spreadsheet.get_changed_df().columns)
+    assert expected_columns == actual_columns

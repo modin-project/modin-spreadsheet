@@ -18,3 +18,6 @@ SORT_COLUMN = "# Sort column"
 SORT_MIXED_TYPE_COLUMN = "# Sort mixed type column"
 SORT_INDEX = "# Sort index"
 RESET_SORT = "# Reset sort"
+
+# Reorder
+REORDER_COLUMN = "# Reorder column"
